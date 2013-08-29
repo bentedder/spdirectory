@@ -1,0 +1,1 @@
+spdy.module('Person', function(Mod, App, Backbone, Marionette, $, _) {	Mod.Person = Backbone.Model.extend({			});		Mod.Collection = Backbone.Collection.extend({		model: Mod.Person	});}
