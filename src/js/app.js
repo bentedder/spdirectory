@@ -4,7 +4,7 @@ var spdy = new Marionette.Application();
 
 spdy.addRegions({
 	main: "#regionMain",
-	tools: "#regionTools"
+	toolsRegion: "#regionTools"
 });
 
 spdy.navigate = function(route, options) {
@@ -21,6 +21,7 @@ spdy.on('initialize:after', function() {
 		Backbone.history.start();
 		if(this.getCurrentRoute() === '') {
 			spdy.trigger('person:showall');
+			spdy.trigger('tools:show');
 		}
 	}
 });
