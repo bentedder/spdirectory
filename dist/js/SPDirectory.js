@@ -1,5 +1,5 @@
 /*!
- SPDirectory Build version 0.0.1, 08-28-2013
+ SPDirectory Build version 0.0.1, 08-29-2013
 */
 /*!
  * jQuery JavaScript Library v1.9.0
@@ -12856,7 +12856,451 @@ if (typeof JSON !== 'object') {
     };
   };
 
-}).call(this);;var Marionette = (function(global, Backbone, _){
+}).call(this);;// MarionetteJS (Backbone.Marionette)
+// ----------------------------------
+// v1.0.4
+//
+// Copyright (c)2013 Derick Bailey, Muted Solutions, LLC.
+// Distributed under MIT license
+//
+// http://marionettejs.com
+
+
+
+/*!
+ * Includes BabySitter
+ * https://github.com/marionettejs/backbone.babysitter/
+ *
+ * Includes Wreqr
+ * https://github.com/marionettejs/backbone.wreqr/
+ */
+
+// Backbone.BabySitter
+// -------------------
+// v0.0.6
+//
+// Copyright (c)2013 Derick Bailey, Muted Solutions, LLC.
+// Distributed under MIT license
+//
+// http://github.com/babysitterjs/backbone.babysitter
+
+// Backbone.ChildViewContainer
+// ---------------------------
+//
+// Provide a container to store, retrieve and
+// shut down child views.
+
+Backbone.ChildViewContainer = (function(Backbone, _){
+  
+  // Container Constructor
+  // ---------------------
+
+  var Container = function(views){
+    this._views = {};
+    this._indexByModel = {};
+    this._indexByCustom = {};
+    this._updateLength();
+
+    _.each(views, this.add, this);
+  };
+
+  // Container Methods
+  // -----------------
+
+  _.extend(Container.prototype, {
+
+    // Add a view to this container. Stores the view
+    // by `cid` and makes it searchable by the model
+    // cid (and model itself). Optionally specify
+    // a custom key to store an retrieve the view.
+    add: function(view, customIndex){
+      var viewCid = view.cid;
+
+      // store the view
+      this._views[viewCid] = view;
+
+      // index it by model
+      if (view.model){
+        this._indexByModel[view.model.cid] = viewCid;
+      }
+
+      // index by custom
+      if (customIndex){
+        this._indexByCustom[customIndex] = viewCid;
+      }
+
+      this._updateLength();
+    },
+
+    // Find a view by the model that was attached to
+    // it. Uses the model's `cid` to find it.
+    findByModel: function(model){
+      return this.findByModelCid(model.cid);
+    },
+
+    // Find a view by the `cid` of the model that was attached to
+    // it. Uses the model's `cid` to find the view `cid` and
+    // retrieve the view using it.
+    findByModelCid: function(modelCid){
+      var viewCid = this._indexByModel[modelCid];
+      return this.findByCid(viewCid);
+    },
+
+    // Find a view by a custom indexer.
+    findByCustom: function(index){
+      var viewCid = this._indexByCustom[index];
+      return this.findByCid(viewCid);
+    },
+
+    // Find by index. This is not guaranteed to be a
+    // stable index.
+    findByIndex: function(index){
+      return _.values(this._views)[index];
+    },
+
+    // retrieve a view by it's `cid` directly
+    findByCid: function(cid){
+      return this._views[cid];
+    },
+
+    // Remove a view
+    remove: function(view){
+      var viewCid = view.cid;
+
+      // delete model index
+      if (view.model){
+        delete this._indexByModel[view.model.cid];
+      }
+
+      // delete custom index
+      _.any(this._indexByCustom, function(cid, key) {
+        if (cid === viewCid) {
+          delete this._indexByCustom[key];
+          return true;
+        }
+      }, this);
+
+      // remove the view from the container
+      delete this._views[viewCid];
+
+      // update the length
+      this._updateLength();
+    },
+
+    // Call a method on every view in the container,
+    // passing parameters to the call method one at a
+    // time, like `function.call`.
+    call: function(method){
+      this.apply(method, _.tail(arguments));
+    },
+
+    // Apply a method on every view in the container,
+    // passing parameters to the call method one at a
+    // time, like `function.apply`.
+    apply: function(method, args){
+      _.each(this._views, function(view){
+        if (_.isFunction(view[method])){
+          view[method].apply(view, args || []);
+        }
+      });
+    },
+
+    // Update the `.length` attribute on this container
+    _updateLength: function(){
+      this.length = _.size(this._views);
+    }
+  });
+
+  // Borrowing this code from Backbone.Collection:
+  // http://backbonejs.org/docs/backbone.html#section-106
+  //
+  // Mix in methods from Underscore, for iteration, and other
+  // collection related features.
+  var methods = ['forEach', 'each', 'map', 'find', 'detect', 'filter', 
+    'select', 'reject', 'every', 'all', 'some', 'any', 'include', 
+    'contains', 'invoke', 'toArray', 'first', 'initial', 'rest', 
+    'last', 'without', 'isEmpty', 'pluck'];
+
+  _.each(methods, function(method) {
+    Container.prototype[method] = function() {
+      var views = _.values(this._views);
+      var args = [views].concat(_.toArray(arguments));
+      return _[method].apply(_, args);
+    };
+  });
+
+  // return the public API
+  return Container;
+})(Backbone, _);
+
+// Backbone.Wreqr (Backbone.Marionette)
+// ----------------------------------
+// v0.2.0
+//
+// Copyright (c)2013 Derick Bailey, Muted Solutions, LLC.
+// Distributed under MIT license
+//
+// http://github.com/marionettejs/backbone.wreqr
+
+
+Backbone.Wreqr = (function(Backbone, Marionette, _){
+  "use strict";
+  var Wreqr = {};
+
+  // Handlers
+// --------
+// A registry of functions to call, given a name
+
+Wreqr.Handlers = (function(Backbone, _){
+  "use strict";
+  
+  // Constructor
+  // -----------
+
+  var Handlers = function(options){
+    this.options = options;
+    this._wreqrHandlers = {};
+    
+    if (_.isFunction(this.initialize)){
+      this.initialize(options);
+    }
+  };
+
+  Handlers.extend = Backbone.Model.extend;
+
+  // Instance Members
+  // ----------------
+
+  _.extend(Handlers.prototype, Backbone.Events, {
+
+    // Add multiple handlers using an object literal configuration
+    setHandlers: function(handlers){
+      _.each(handlers, function(handler, name){
+        var context = null;
+
+        if (_.isObject(handler) && !_.isFunction(handler)){
+          context = handler.context;
+          handler = handler.callback;
+        }
+
+        this.setHandler(name, handler, context);
+      }, this);
+    },
+
+    // Add a handler for the given name, with an
+    // optional context to run the handler within
+    setHandler: function(name, handler, context){
+      var config = {
+        callback: handler,
+        context: context
+      };
+
+      this._wreqrHandlers[name] = config;
+
+      this.trigger("handler:add", name, handler, context);
+    },
+
+    // Determine whether or not a handler is registered
+    hasHandler: function(name){
+      return !! this._wreqrHandlers[name];
+    },
+
+    // Get the currently registered handler for
+    // the specified name. Throws an exception if
+    // no handler is found.
+    getHandler: function(name){
+      var config = this._wreqrHandlers[name];
+
+      if (!config){
+        throw new Error("Handler not found for '" + name + "'");
+      }
+
+      return function(){
+        var args = Array.prototype.slice.apply(arguments);
+        return config.callback.apply(config.context, args);
+      };
+    },
+
+    // Remove a handler for the specified name
+    removeHandler: function(name){
+      delete this._wreqrHandlers[name];
+    },
+
+    // Remove all handlers from this registry
+    removeAllHandlers: function(){
+      this._wreqrHandlers = {};
+    }
+  });
+
+  return Handlers;
+})(Backbone, _);
+
+  // Wreqr.CommandStorage
+// --------------------
+//
+// Store and retrieve commands for execution.
+Wreqr.CommandStorage = (function(){
+  "use strict";
+
+  // Constructor function
+  var CommandStorage = function(options){
+    this.options = options;
+    this._commands = {};
+
+    if (_.isFunction(this.initialize)){
+      this.initialize(options);
+    }
+  };
+
+  // Instance methods
+  _.extend(CommandStorage.prototype, Backbone.Events, {
+
+    // Get an object literal by command name, that contains
+    // the `commandName` and the `instances` of all commands
+    // represented as an array of arguments to process
+    getCommands: function(commandName){
+      var commands = this._commands[commandName];
+
+      // we don't have it, so add it
+      if (!commands){
+
+        // build the configuration
+        commands = {
+          command: commandName, 
+          instances: []
+        };
+
+        // store it
+        this._commands[commandName] = commands;
+      }
+
+      return commands;
+    },
+
+    // Add a command by name, to the storage and store the
+    // args for the command
+    addCommand: function(commandName, args){
+      var command = this.getCommands(commandName);
+      command.instances.push(args);
+    },
+
+    // Clear all commands for the given `commandName`
+    clearCommands: function(commandName){
+      var command = this.getCommands(commandName);
+      command.instances = [];
+    }
+  });
+
+  return CommandStorage;
+})();
+
+  // Wreqr.Commands
+// --------------
+//
+// A simple command pattern implementation. Register a command
+// handler and execute it.
+Wreqr.Commands = (function(Wreqr){
+  "use strict";
+
+  return Wreqr.Handlers.extend({
+    // default storage type
+    storageType: Wreqr.CommandStorage,
+
+    constructor: function(options){
+      this.options = options || {};
+
+      this._initializeStorage(this.options);
+      this.on("handler:add", this._executeCommands, this);
+
+      var args = Array.prototype.slice.call(arguments);
+      Wreqr.Handlers.prototype.constructor.apply(this, args);
+    },
+
+    // Execute a named command with the supplied args
+    execute: function(name, args){
+      name = arguments[0];
+      args = Array.prototype.slice.call(arguments, 1);
+
+      if (this.hasHandler(name)){
+        this.getHandler(name).apply(this, args);
+      } else {
+        this.storage.addCommand(name, args);
+      }
+
+    },
+
+    // Internal method to handle bulk execution of stored commands
+    _executeCommands: function(name, handler, context){
+      var command = this.storage.getCommands(name);
+
+      // loop through and execute all the stored command instances
+      _.each(command.instances, function(args){
+        handler.apply(context, args);
+      });
+
+      this.storage.clearCommands(name);
+    },
+
+    // Internal method to initialize storage either from the type's
+    // `storageType` or the instance `options.storageType`.
+    _initializeStorage: function(options){
+      var storage;
+
+      var StorageType = options.storageType || this.storageType;
+      if (_.isFunction(StorageType)){
+        storage = new StorageType();
+      } else {
+        storage = StorageType;
+      }
+
+      this.storage = storage;
+    }
+  });
+
+})(Wreqr);
+
+  // Wreqr.RequestResponse
+// ---------------------
+//
+// A simple request/response implementation. Register a
+// request handler, and return a response from it
+Wreqr.RequestResponse = (function(Wreqr){
+  "use strict";
+
+  return Wreqr.Handlers.extend({
+    request: function(){
+      var name = arguments[0];
+      var args = Array.prototype.slice.call(arguments, 1);
+
+      return this.getHandler(name).apply(this, args);
+    }
+  });
+
+})(Wreqr);
+
+  // Event Aggregator
+// ----------------
+// A pub-sub object that can be used to decouple various parts
+// of an application through event-driven architecture.
+
+Wreqr.EventAggregator = (function(Backbone, _){
+  "use strict";
+  var EA = function(){};
+
+  // Copy the `extend` function used by Backbone's classes
+  EA.extend = Backbone.Model.extend;
+
+  // Copy the basic Backbone.Events on to the event aggregator
+  _.extend(EA.prototype, Backbone.Events);
+
+  return EA;
+})(Backbone, _);
+
+
+  return Wreqr;
+})(Backbone, Backbone.Marionette, _);
+
+var Marionette = (function(global, Backbone, _){
   "use strict";
 
   // Define and export the Marionette namespace
@@ -12905,21 +13349,21 @@ Marionette.getOption = function(target, optionName){
   return value;
 };
 
-// Trigger an event and/or a corresponding method name. Examples:
+// Trigger an event and a corresponding method name. Examples:
 //
 // `this.triggerMethod("foo")` will trigger the "foo" event and
-// call the "onFoo" method.
+// call the "onFoo" method. 
 //
 // `this.triggerMethod("foo:bar") will trigger the "foo:bar" event and
 // call the "onFooBar" method.
 Marionette.triggerMethod = (function(){
-
+  
   // split the event name on the :
   var splitter = /(^|:)(\w)/gi;
 
   // take the event section ("section1:section2:section3")
   // and turn it in to uppercase name
-  function getEventName(match, prefix, eventName) {
+  function getEventName(match, prefix, eventName) { 
     return eventName.toUpperCase();
   }
 
@@ -12929,10 +13373,8 @@ Marionette.triggerMethod = (function(){
     var methodName = 'on' + event.replace(splitter, getEventName);
     var method = this[methodName];
 
-    // trigger the event, if a trigger method exists
-    if(_.isFunction(this.trigger)) {
-      this.trigger.apply(this, arguments);
-    }
+    // trigger the event
+    this.trigger.apply(this, arguments);
 
     // call the onMethodName if it exists
     if (_.isFunction(method)) {
@@ -12952,14 +13394,14 @@ Marionette.triggerMethod = (function(){
 // re-rendered.
 
 Marionette.MonitorDOMRefresh = (function(){
-  // track when the view has been shown in the DOM,
-  // using a Marionette.Region (or by other means of triggering "show")
+  // track when the view has been rendered
   function handleShow(view){
     view._isShown = true;
     triggerDOMRefresh(view);
   }
 
-  // track when the view has been rendered
+  // track when the view has been shown in the DOM,
+  // using a Marionette.Region (or by other means of triggering "show")
   function handleRender(view){
     view._isRendered = true;
     triggerDOMRefresh(view);
@@ -13198,7 +13640,6 @@ _.extend(Marionette.Region, {
   // ```
   //
   buildRegion: function(regionConfig, defaultRegionType){
-
     var regionIsString = (typeof regionConfig === "string");
     var regionSelectorIsString = (typeof regionConfig.selector === "string");
     var regionTypeIsUndefined = (typeof regionConfig.regionType === "undefined");
@@ -13645,7 +14086,7 @@ Marionette.View = Backbone.View.extend({
   // are copies to the object passed in.
   mixinTemplateHelpers: function(target){
     target = target || {};
-    var templateHelpers = Marionette.getOption(this, "templateHelpers");
+    var templateHelpers = this.templateHelpers;
     if (_.isFunction(templateHelpers)){
       templateHelpers = templateHelpers.call(this);
     }
@@ -13775,7 +14216,7 @@ Marionette.View = Backbone.View.extend({
 
   // This method unbinds the elements specified in the "ui" hash
   unbindUIElements: function(){
-    if (!this.ui || !this._uiBindings){ return; }
+    if (!this.ui){ return; }
 
     // delete all of the existing ui bindings
     _.each(this.ui, function($el, name){
@@ -14131,8 +14572,8 @@ Marionette.CollectionView = Marionette.View.extend({
 // Extends directly from CollectionView and also renders an
 // an item view as `modelView`, for the top leaf
 Marionette.CompositeView = Marionette.CollectionView.extend({
-
-  // Setting up the inheritance chain which allows changes to
+  
+  // Setting up the inheritance chain which allows changes to 
   // Marionette.CollectionView.prototype.constructor which allows overriding
   constructor: function(){
     Marionette.CollectionView.prototype.constructor.apply(this, slice(arguments));
@@ -14163,7 +14604,7 @@ Marionette.CompositeView = Marionette.CollectionView.extend({
     return itemView;
   },
 
-  // Serialize the collection for the view.
+  // Serialize the collection for the view. 
   // You can override the `serializeData` method in your own view
   // definition, to provide custom serialization for your view's data.
   serializeData: function(){
@@ -14187,7 +14628,7 @@ Marionette.CompositeView = Marionette.CollectionView.extend({
     this.triggerBeforeRender();
     var html = this.renderModel();
     this.$el.html(html);
-    // the ui bindings is done here and not at the end of render since they
+    // the ui bindings is done here and not at the end of render since they 
     // will not be available until after the model is rendered, but should be
     // available before the collection is rendered.
     this.bindUIElements();
@@ -14236,10 +14677,9 @@ Marionette.CompositeView = Marionette.CollectionView.extend({
     }
 
     var container;
-    var itemViewContainer = Marionette.getOption(containerView, "itemViewContainer");
-    if (itemViewContainer){
+    if (containerView.itemViewContainer){
 
-      var selector = _.isFunction(itemViewContainer) ? itemViewContainer() : itemViewContainer;
+      var selector = _.result(containerView, "itemViewContainer");
       container = containerView.$(selector);
       if (container.length <= 0) {
         throwError("The specified `itemViewContainer` was not found: " + containerView.itemViewContainer, "ItemViewContainerMissingError");
@@ -14291,16 +14731,15 @@ Marionette.Layout = Marionette.ItemView.extend({
   // for the regions to the newly rendered DOM elements.
   render: function(){
 
-    if (this.isClosed){
-      // a previously closed layout means we need to 
-      // completely re-initialize the regions
-      this._initializeRegions();
-    }
-    if (this._firstRender) {
+    if (this._firstRender){
       // if this is the first render, don't do anything to
       // reset the regions
       this._firstRender = false;
-    } else if (!this.isClosed){
+    } else if (this.isClosed){
+      // a previously closed layout means we need to 
+      // completely re-initialize the regions
+      this._initializeRegions();
+    } else {
       // If this is not the first render call, then we need to 
       // re-initializing the `el` for each region
       this._reInitializeRegions();
@@ -14324,18 +14763,17 @@ Marionette.Layout = Marionette.ItemView.extend({
   addRegion: function(name, definition){
     var regions = {};
     regions[name] = definition;
-    return this._buildRegions(regions)[name];
+    return this.addRegions(regions)[name];
   },
 
   // Add multiple regions as a {name: definition, name2: def2} object literal
   addRegions: function(regions){
-    this.regions = _.extend({}, this.regions, regions);
+    this.regions = _.extend(this.regions || {}, regions);
     return this._buildRegions(regions);
   },
 
   // Remove a single region from the Layout, by name
   removeRegion: function(name){
-    delete this.regions[name];
     return this.regionManager.removeRegion(name);
   },
 
@@ -14344,7 +14782,6 @@ Marionette.Layout = Marionette.ItemView.extend({
     var that = this;
 
     var defaults = {
-      regionType: Marionette.getOption(this, "regionType"),
       parentEl: function(){ return that.$el; }
     };
 
@@ -14415,46 +14852,31 @@ Marionette.AppRouter = Backbone.Router.extend({
 
   constructor: function(options){
     Backbone.Router.prototype.constructor.apply(this, slice(arguments));
-    
-    this.options = options || {};
 
-    var appRoutes = Marionette.getOption(this, "appRoutes");
-    var controller = this._getController();
-    this.processAppRoutes(controller, appRoutes);
-  },
+    this.options = options;
 
-  // Similar to route method on a Backbone Router but
-  // method is called on the controller
-  appRoute: function(route, methodName) {
-    var controller = this._getController();
-    this._addAppRoute(controller, route, methodName);
+    if (this.appRoutes){
+      var controller = Marionette.getOption(this, "controller");
+      this.processAppRoutes(controller, this.appRoutes);
+    }
   },
 
   // Internal method to process the `appRoutes` for the
   // router, and turn them in to routes that trigger the
   // specified method on the specified `controller`.
   processAppRoutes: function(controller, appRoutes) {
-    if (!appRoutes){ return; }
-
     var routeNames = _.keys(appRoutes).reverse(); // Backbone requires reverted order of routes
 
     _.each(routeNames, function(route) {
-      this._addAppRoute(controller, route, appRoutes[route]);
+      var methodName = appRoutes[route];
+      var method = controller[methodName];
+
+      if (!method) {
+        throw new Error("Method '" + methodName + "' was not found on the controller");
+      }
+
+      this.route(route, methodName, _.bind(method, controller));
     }, this);
-  },
-
-  _getController: function(){
-    return Marionette.getOption(this, "controller");
-  },
-
-  _addAppRoute: function(controller, route, methodName){
-    var method = controller[methodName];
-
-    if (!method) {
-      throw new Error("Method '" + methodName + "' was not found on the controller");
-    }
-
-    this.route(route, methodName, _.bind(method, controller));
   }
 });
 
@@ -14517,23 +14939,11 @@ _.extend(Marionette.Application.prototype, Backbone.Events, {
     return this._regionManager.addRegions(regions);
   },
 
-  // Close all regions in the app, without removing them
-  closeRegions: function(){
-    this._regionManager.closeRegions();
-  },
-
-  // Removes a region from your app, by name
+  // Removes a region from your app.
   // Accepts the regions name
   // removeRegion('myRegion')
   removeRegion: function(region) {
     this._regionManager.removeRegion(region);
-  },
-  
-  // Provides alternative access to regions
-  // Accepts the region name
-  // getRegion('main')
-  getRegion: function(region) {
-    return this._regionManager.get(region);
   },
 
   // Create a module, attached to the application
@@ -14774,12 +15184,14 @@ _.extend(Marionette.Module, {
 
 
   return Marionette;
-})(this, Backbone, _);;_.templateSettings = { interpolate : /\{\{([\s\S]+?)\}\}/g };
+})(this, Backbone, _);
+;_.templateSettings = { interpolate : /\{\{([\s\S]+?)\}\}/g };
 
 var spdy = new Marionette.Application();
 
 spdy.addRegions({
-	main: '#mainRegion'
+	main: "#regionMain",
+	tools: "#regionTools"
 });
 
 spdy.navigate = function(route, options) {
@@ -14798,4 +15210,15 @@ spdy.on('initialize:after', function() {
 			spdy.trigger('person:showall');
 		}
 	}
-});;spdy.module('Person', function(Mod, App, Backbone, Marionette, $, _) {	Mod.Person = Backbone.Model.extend({			});		Mod.Collection = Backbone.Collection.extend({		model: Mod.Person	});}
+});;var peopleData = [	{		"firstName": "Jerry",		"lastName": "Nolan",		"email": "Nam@molestie.com",		"extension": "2289",		"room": "3820",		"mobilePhone": "442-1159-4322",		"homePHone": "7485-9228"	},	{		"firstName": "Yen",		"lastName": "Wiggins",		"email": "interdum.Sed.auctor@aarcu.ca",		"extension": "8273",		"room": "2322",		"mobilePhone": "894-3354-4137",		"homePHone": "3589-8757"	},	{		"firstName": "Tanya",		"lastName": "Osborn",		"email": "nunc.sit@variusNam.com",		"extension": "3708",		"room": "2053",		"mobilePhone": "818-7129-4637",		"homePHone": "7659-1398"	},	{		"firstName": "Amal",		"lastName": "Ingram",		"email": "felis.adipiscing@Phasellus.net",		"extension": "8364",		"room": "2687",		"mobilePhone": "229-9377-3876",		"homePHone": "5943-6826"	},	{		"firstName": "Cade",		"lastName": "Castaneda",		"email": "elit.dictum@enimNunc.edu",		"extension": "8017",		"room": "1833",		"mobilePhone": "968-1771-9573",		"homePHone": "4488-4311"	},	{		"firstName": "Austin",		"lastName": "Forbes",		"email": "urna.suscipit@ullamcorpermagna.org",		"extension": "1692",		"room": "1656",		"mobilePhone": "585-4545-2152",		"homePHone": "5348-7372"	},	{		"firstName": "Joshua",		"lastName": "Stafford",		"email": "ligula@lacinia.net",		"extension": "6591",		"room": "3751",		"mobilePhone": "272-7562-1962",		"homePHone": "1236-5652"	},	{		"firstName": "Tamara",		"lastName": "Doyle",		"email": "placerat.velit@dapibus.co.uk",		"extension": "3549",		"room": "1940",		"mobilePhone": "793-9647-2982",		"homePHone": "9541-6661"	},	{		"firstName": "Emery",		"lastName": "Burns",		"email": "ut@sapienCras.ca",		"extension": "5408",		"room": "1443",		"mobilePhone": "575-3773-3194",		"homePHone": "1761-3918"	},	{		"firstName": "Lilah",		"lastName": "Odonnell",		"email": "libero.Morbi.accumsan@adipiscingMaurismolestie.edu",		"extension": "2586",		"room": "3765",		"mobilePhone": "661-2455-2274",		"homePHone": "3684-4446"	},	{		"firstName": "Hector",		"lastName": "Henson",		"email": "auctor.velit@euismod.co.uk",		"extension": "9080",		"room": "3443",		"mobilePhone": "917-6788-2433",		"homePHone": "6178-6521"	},	{		"firstName": "Xanthus",		"lastName": "Lindsey",		"email": "felis.ullamcorper.viverra@luctusutpellentesque.org",		"extension": "1371",		"room": "3334",		"mobilePhone": "396-2138-7269",		"homePHone": "5931-9986"	},	{		"firstName": "Jack",		"lastName": "Barnett",		"email": "Phasellus.dolor@dignissimMaecenas.net",		"extension": "5709",		"room": "2892",		"mobilePhone": "264-4516-5343",		"homePHone": "5129-9499"	},	{		"firstName": "Gisela",		"lastName": "Sawyer",		"email": "ornare.elit@cursusNuncmauris.com",		"extension": "4938",		"room": "2680",		"mobilePhone": "192-2565-1615",		"homePHone": "9584-6136"	},	{		"firstName": "Jada",		"lastName": "Ewing",		"email": "fermentum.risus@Quisque.ca",		"extension": "9640",		"room": "1625",		"mobilePhone": "847-8499-8659",		"homePHone": "2651-2357"	},	{		"firstName": "Emery",		"lastName": "Rosa",		"email": "nulla@ac.ca",		"extension": "2501",		"room": "3549",		"mobilePhone": "221-1588-8887",		"homePHone": "4475-9261"	},	{		"firstName": "Ian",		"lastName": "Beck",		"email": "quis.arcu.vel@AeneanmassaInteger.org",		"extension": "9259",		"room": "3872",		"mobilePhone": "118-2282-7716",		"homePHone": "5948-3133"	},	{		"firstName": "Cleo",		"lastName": "Torres",		"email": "tellus.Phasellus@mauriseuelit.org",		"extension": "8271",		"room": "2046",		"mobilePhone": "873-8821-1937",		"homePHone": "7442-3796"	},	{		"firstName": "Sara",		"lastName": "Ferguson",		"email": "Fusce.dolor.quam@sapien.ca",		"extension": "2281",		"room": "2449",		"mobilePhone": "198-8726-5375",		"homePHone": "3939-3615"	},	{		"firstName": "Hiroko",		"lastName": "Acosta",		"email": "amet@scelerisque.com",		"extension": "5209",		"room": "1943",		"mobilePhone": "968-9667-3747",		"homePHone": "1133-9523"	},	{		"firstName": "Burton",		"lastName": "Clements",		"email": "justo.Praesent.luctus@elit.net",		"extension": "5186",		"room": "1009",		"mobilePhone": "193-1529-1774",		"homePHone": "5115-2372"	},	{		"firstName": "Reagan",		"lastName": "Tyler",		"email": "mi.ac@tempor.org",		"extension": "3432",		"room": "1456",		"mobilePhone": "372-3753-2633",		"homePHone": "3968-1742"	},	{		"firstName": "Addison",		"lastName": "Cardenas",		"email": "Duis.a@mauris.net",		"extension": "2282",		"room": "3838",		"mobilePhone": "241-5237-8711",		"homePHone": "3446-4954"	},	{		"firstName": "Noelle",		"lastName": "Solis",		"email": "turpis.In@dolor.ca",		"extension": "1489",		"room": "3221",		"mobilePhone": "327-4689-7176",		"homePHone": "7761-2975"	},	{		"firstName": "Vivian",		"lastName": "Crane",		"email": "tristique.neque.venenatis@purus.org",		"extension": "1623",		"room": "2455",		"mobilePhone": "923-2396-9757",		"homePHone": "7235-9861"	},	{		"firstName": "Robert",		"lastName": "Fletcher",		"email": "vulputate.dui@estNunc.org",		"extension": "6136",		"room": "3771",		"mobilePhone": "864-7768-1541",		"homePHone": "3879-1959"	},	{		"firstName": "Sara",		"lastName": "Barrera",		"email": "Praesent@tellusfaucibus.org",		"extension": "8536",		"room": "1082",		"mobilePhone": "849-6143-8919",		"homePHone": "5598-4674"	},	{		"firstName": "Laurel",		"lastName": "Daugherty",		"email": "eget.massa@neque.edu",		"extension": "6388",		"room": "1098",		"mobilePhone": "541-3818-9417",		"homePHone": "4269-6579"	},	{		"firstName": "Brett",		"lastName": "Holland",		"email": "nibh.lacinia@facilisislorem.edu",		"extension": "9284",		"room": "1594",		"mobilePhone": "253-6938-8377",		"homePHone": "7741-9996"	},	{		"firstName": "Justine",		"lastName": "Mercado",		"email": "venenatis.vel@Suspendisse.com",		"extension": "7384",		"room": "3130",		"mobilePhone": "569-6222-1419",		"homePHone": "7764-5945"	},	{		"firstName": "Zachary",		"lastName": "Hamilton",		"email": "est@MaurismagnaDuis.edu",		"extension": "1455",		"room": "2521",		"mobilePhone": "572-9425-5376",		"homePHone": "7854-5281"	},	{		"firstName": "Bruno",		"lastName": "Erickson",		"email": "eros.Nam@Nullamenim.ca",		"extension": "6822",		"room": "1311",		"mobilePhone": "776-2581-8964",		"homePHone": "2319-1646"	},	{		"firstName": "Ocean",		"lastName": "Chapman",		"email": "fames.ac.turpis@conubianostra.co.uk",		"extension": "1768",		"room": "3413",		"mobilePhone": "679-3455-8467",		"homePHone": "3225-5246"	},	{		"firstName": "Olivia",		"lastName": "Reyes",		"email": "adipiscing@FuscefeugiatLorem.com",		"extension": "4262",		"room": "1754",		"mobilePhone": "351-8292-6565",		"homePHone": "8332-4468"	},	{		"firstName": "Juliet",		"lastName": "Berry",		"email": "orci.luctus@pretiumnequeMorbi.net",		"extension": "7804",		"room": "3089",		"mobilePhone": "929-3611-7934",		"homePHone": "5983-2146"	},	{		"firstName": "Irene",		"lastName": "Battle",		"email": "commodo.ipsum@Quisque.com",		"extension": "9532",		"room": "2873",		"mobilePhone": "873-8831-4322",		"homePHone": "3457-4495"	},	{		"firstName": "Indira",		"lastName": "Guy",		"email": "Aliquam@nasceturridiculus.net",		"extension": "5868",		"room": "2309",		"mobilePhone": "951-8246-1674",		"homePHone": "9852-3186"	},	{		"firstName": "Hannah",		"lastName": "Sanford",		"email": "at@tempor.net",		"extension": "6493",		"room": "3144",		"mobilePhone": "522-5623-8698",		"homePHone": "3732-5838"	},	{		"firstName": "Samson",		"lastName": "Church",		"email": "ligula.Aenean@MaurismagnaDuis.edu",		"extension": "2587",		"room": "3270",		"mobilePhone": "785-2967-6814",		"homePHone": "4937-7582"	},	{		"firstName": "Eve",		"lastName": "Chan",		"email": "nibh@sagittisfelis.org",		"extension": "3913",		"room": "1161",		"mobilePhone": "458-1333-3998",		"homePHone": "7122-1587"	},	{		"firstName": "Zane",		"lastName": "Norman",		"email": "ornare.lectus.justo@porttitorvulputateposuere.org",		"extension": "2537",		"room": "2278",		"mobilePhone": "855-2933-3655",		"homePHone": "5532-6546"	},	{		"firstName": "Zoe",		"lastName": "Dalton",		"email": "ipsum@sagittissemperNam.com",		"extension": "7563",		"room": "1206",		"mobilePhone": "795-5497-4397",		"homePHone": "8523-1556"	},	{		"firstName": "Adele",		"lastName": "Tyler",		"email": "Integer@Sed.co.uk",		"extension": "1216",		"room": "2490",		"mobilePhone": "376-1615-1124",		"homePHone": "3112-5355"	},	{		"firstName": "Quyn",		"lastName": "Wilson",		"email": "ipsum@ultricesposuerecubilia.net",		"extension": "1184",		"room": "2789",		"mobilePhone": "811-1861-5765",		"homePHone": "7791-8124"	},	{		"firstName": "Fritz",		"lastName": "Moon",		"email": "nunc.est.mollis@euerat.co.uk",		"extension": "5549",		"room": "1803",		"mobilePhone": "758-5695-4668",		"homePHone": "3231-9327"	},	{		"firstName": "Erica",		"lastName": "Gallegos",		"email": "dolor@Nuncpulvinararcu.net",		"extension": "6175",		"room": "1244",		"mobilePhone": "614-3627-2235",		"homePHone": "8842-1729"	},	{		"firstName": "Vivian",		"lastName": "Giles",		"email": "mollis.vitae@dictumeu.co.uk",		"extension": "6590",		"room": "3469",		"mobilePhone": "629-3335-8531",		"homePHone": "6664-5955"	},	{		"firstName": "Maya",		"lastName": "Pruitt",		"email": "Nullam.suscipit@Quisque.co.uk",		"extension": "7692",		"room": "3614",		"mobilePhone": "747-4666-8827",		"homePHone": "3589-1445"	},	{		"firstName": "Grace",		"lastName": "Vance",		"email": "Quisque@Donectempor.ca",		"extension": "7683",		"room": "2752",		"mobilePhone": "555-2825-4723",		"homePHone": "6399-7788"	},	{		"firstName": "Cadman",		"lastName": "Dudley",		"email": "dolor.Fusce@orci.ca",		"extension": "8487",		"room": "3697",		"mobilePhone": "265-6197-9133",		"homePHone": "8464-7544"	},	{		"firstName": "Emma",		"lastName": "Decker",		"email": "est@turpisnec.co.uk",		"extension": "6896",		"room": "3882",		"mobilePhone": "558-6142-2391",		"homePHone": "4342-6963"	},	{		"firstName": "Jerry",		"lastName": "Yang",		"email": "eu.placerat.eget@porttitor.com",		"extension": "7383",		"room": "2461",		"mobilePhone": "245-6832-9641",		"homePHone": "9413-6453"	},	{		"firstName": "Graham",		"lastName": "Cantrell",		"email": "sagittis.augue@tristique.ca",		"extension": "4243",		"room": "1813",		"mobilePhone": "817-1426-3582",		"homePHone": "2331-6343"	},	{		"firstName": "Orlando",		"lastName": "Tanner",		"email": "ipsum.non@arcu.co.uk",		"extension": "2515",		"room": "2296",		"mobilePhone": "557-4654-1713",		"homePHone": "2854-2747"	},	{		"firstName": "Ann",		"lastName": "Sellers",		"email": "tristique.pellentesque.tellus@lobortismaurisSuspendisse.co.uk",		"extension": "7795",		"room": "2734",		"mobilePhone": "891-4577-1221",		"homePHone": "8241-1943"	},	{		"firstName": "Mia",		"lastName": "Ryan",		"email": "ante.ipsum.primis@nonvestibulum.ca",		"extension": "4221",		"room": "2389",		"mobilePhone": "421-3116-5745",		"homePHone": "9568-7188"	},	{		"firstName": "Vivien",		"lastName": "Clay",		"email": "massa@senectusetnetus.org",		"extension": "6571",		"room": "1140",		"mobilePhone": "895-3155-2616",		"homePHone": "4523-9717"	},	{		"firstName": "Rhona",		"lastName": "Terrell",		"email": "metus.vitae@mus.org",		"extension": "1494",		"room": "3147",		"mobilePhone": "777-5638-7838",		"homePHone": "4458-8618"	},	{		"firstName": "Hu",		"lastName": "Cole",		"email": "Sed.neque@vulputate.co.uk",		"extension": "2391",		"room": "3300",		"mobilePhone": "325-1835-5543",		"homePHone": "4627-9668"	},	{		"firstName": "Desiree",		"lastName": "Murphy",		"email": "Cum.sociis@nibhDonecest.co.uk",		"extension": "9329",		"room": "1764",		"mobilePhone": "811-2352-2777",		"homePHone": "3196-7247"	},	{		"firstName": "Peter",		"lastName": "Wade",		"email": "et.arcu@consequatdolor.net",		"extension": "4873",		"room": "1777",		"mobilePhone": "645-4456-7179",		"homePHone": "8561-6663"	},	{		"firstName": "Nola",		"lastName": "Ball",		"email": "convallis@Quisquefringillaeuismod.org",		"extension": "5959",		"room": "2943",		"mobilePhone": "299-7442-7975",		"homePHone": "9548-1186"	},	{		"firstName": "Lesley",		"lastName": "Kemp",		"email": "nec.tellus.Nunc@lectuspede.net",		"extension": "5403",		"room": "2244",		"mobilePhone": "311-4192-4432",		"homePHone": "4164-6126"	},	{		"firstName": "Alice",		"lastName": "Weeks",		"email": "augue@vitaedolor.co.uk",		"extension": "9775",		"room": "1029",		"mobilePhone": "754-9554-5558",		"homePHone": "8812-9656"	},	{		"firstName": "Miriam",		"lastName": "Moss",		"email": "Ut@apurus.com",		"extension": "1507",		"room": "2739",		"mobilePhone": "316-9519-1535",		"homePHone": "9748-6495"	},	{		"firstName": "Aurora",		"lastName": "Langley",		"email": "Suspendisse@eget.org",		"extension": "8003",		"room": "3328",		"mobilePhone": "884-1891-4994",		"homePHone": "5294-9325"	},	{		"firstName": "Orlando",		"lastName": "Cotton",		"email": "a@estconguea.ca",		"extension": "9073",		"room": "2468",		"mobilePhone": "173-8568-4697",		"homePHone": "5819-9949"	},	{		"firstName": "Elliott",		"lastName": "Mendez",		"email": "magna.Cras@risusDonecnibh.co.uk",		"extension": "5938",		"room": "3041",		"mobilePhone": "452-4243-6121",		"homePHone": "6172-8828"	},	{		"firstName": "Savannah",		"lastName": "Lewis",		"email": "sit.amet.ante@ante.edu",		"extension": "9770",		"room": "3064",		"mobilePhone": "954-4958-1917",		"homePHone": "1376-3582"	},	{		"firstName": "Fatima",		"lastName": "Walker",		"email": "ipsum.leo.elementum@quamdignissim.com",		"extension": "6583",		"room": "3684",		"mobilePhone": "466-4298-1562",		"homePHone": "5795-9623"	},	{		"firstName": "Bell",		"lastName": "Ware",		"email": "Suspendisse.eleifend@Phasellusdolorelit.ca",		"extension": "4111",		"room": "1408",		"mobilePhone": "891-3667-7657",		"homePHone": "1295-9818"	},	{		"firstName": "Jared",		"lastName": "Carrillo",		"email": "et@tellus.co.uk",		"extension": "9719",		"room": "1133",		"mobilePhone": "532-4326-8835",		"homePHone": "4834-9398"	},	{		"firstName": "Ashton",		"lastName": "Whitaker",		"email": "dictum.ultricies.ligula@at.edu",		"extension": "2818",		"room": "2620",		"mobilePhone": "126-6579-7966",		"homePHone": "8922-7467"	},	{		"firstName": "Martha",		"lastName": "Mcclure",		"email": "nulla.In@nonsapien.com",		"extension": "6898",		"room": "1597",		"mobilePhone": "487-4131-5113",		"homePHone": "1688-6113"	},	{		"firstName": "Inez",		"lastName": "Oconnor",		"email": "aliquam@commodo.net",		"extension": "8285",		"room": "3564",		"mobilePhone": "151-4388-4288",		"homePHone": "2823-5121"	},	{		"firstName": "Amos",		"lastName": "Cole",		"email": "aliquet.molestie@pellentesqueafacilisis.ca",		"extension": "2182",		"room": "3979",		"mobilePhone": "498-4498-7771",		"homePHone": "8591-4139"	},	{		"firstName": "Brenden",		"lastName": "Hill",		"email": "Maecenas@variusorci.ca",		"extension": "5288",		"room": "3568",		"mobilePhone": "268-6571-9687",		"homePHone": "3571-1725"	},	{		"firstName": "Reed",		"lastName": "Henry",		"email": "accumsan.neque@estvitaesodales.edu",		"extension": "4975",		"room": "3698",		"mobilePhone": "797-9565-1351",		"homePHone": "9472-8539"	},	{		"firstName": "Chanda",		"lastName": "Hester",		"email": "mi.Duis@aliquamiaculislacus.co.uk",		"extension": "6935",		"room": "1910",		"mobilePhone": "912-7196-5626",		"homePHone": "8767-1499"	},	{		"firstName": "Scarlett",		"lastName": "Dorsey",		"email": "lacus.Quisque.purus@tellusNunc.co.uk",		"extension": "5427",		"room": "1435",		"mobilePhone": "825-8365-3628",		"homePHone": "2441-1182"	},	{		"firstName": "Jack",		"lastName": "Ramirez",		"email": "Mauris@orciPhasellusdapibus.com",		"extension": "6928",		"room": "2096",		"mobilePhone": "325-2399-5658",		"homePHone": "2764-1142"	},	{		"firstName": "Cassidy",		"lastName": "Curtis",		"email": "eget.tincidunt@nullaanteiaculis.co.uk",		"extension": "9624",		"room": "2801",		"mobilePhone": "269-5756-1466",		"homePHone": "1253-9161"	},	{		"firstName": "Chanda",		"lastName": "Blanchard",		"email": "lacus@et.co.uk",		"extension": "3338",		"room": "1385",		"mobilePhone": "827-1876-6237",		"homePHone": "6936-2791"	},	{		"firstName": "Shafira",		"lastName": "Mathews",		"email": "magna@Infaucibus.org",		"extension": "9479",		"room": "3582",		"mobilePhone": "429-3473-3498",		"homePHone": "6252-1883"	},	{		"firstName": "Lars",		"lastName": "Raymond",		"email": "facilisis@risus.org",		"extension": "9734",		"room": "2881",		"mobilePhone": "895-2254-5278",		"homePHone": "6662-8249"	},	{		"firstName": "Abra",		"lastName": "Daniel",		"email": "ante@auctorodioa.edu",		"extension": "3688",		"room": "3431",		"mobilePhone": "534-3294-3488",		"homePHone": "6662-2341"	},	{		"firstName": "Isaiah",		"lastName": "Rivera",		"email": "faucibus.ut.nulla@magnaSedeu.edu",		"extension": "9721",		"room": "2722",		"mobilePhone": "134-5587-7721",		"homePHone": "2187-6598"	},	{		"firstName": "Orli",		"lastName": "Gillespie",		"email": "ante.dictum.cursus@convallis.ca",		"extension": "1982",		"room": "3667",		"mobilePhone": "615-7482-8796",		"homePHone": "4266-2538"	},	{		"firstName": "Vanna",		"lastName": "Dudley",		"email": "Donec.tempus@aliquetlibero.co.uk",		"extension": "7388",		"room": "1563",		"mobilePhone": "581-2958-3412",		"homePHone": "1975-1413"	},	{		"firstName": "Roanna",		"lastName": "Gilmore",		"email": "congue@musAenean.org",		"extension": "2719",		"room": "1202",		"mobilePhone": "393-7738-6878",		"homePHone": "3793-6787"	},	{		"firstName": "April",		"lastName": "Schmidt",		"email": "Duis.volutpat.nunc@Quisque.ca",		"extension": "7848",		"room": "3002",		"mobilePhone": "197-3899-6382",		"homePHone": "2515-2177"	},	{		"firstName": "Petra",		"lastName": "Mack",		"email": "purus.mauris@sedest.net",		"extension": "5872",		"room": "2324",		"mobilePhone": "331-3385-1857",		"homePHone": "2484-8989"	},	{		"firstName": "William",		"lastName": "Mathews",		"email": "ac.orci.Ut@Vestibulum.ca",		"extension": "5502",		"room": "2952",		"mobilePhone": "211-5428-6147",		"homePHone": "8841-2341"	},	{		"firstName": "Cedric",		"lastName": "Coffey",		"email": "sagittis@eliteratvitae.co.uk",		"extension": "8891",		"room": "1064",		"mobilePhone": "447-6471-7984",		"homePHone": "1218-1593"	},	{		"firstName": "Nissim",		"lastName": "Fox",		"email": "enim@Aliquamrutrum.edu",		"extension": "3175",		"room": "1441",		"mobilePhone": "822-2587-9687",		"homePHone": "6716-8159"	},	{		"firstName": "Knox",		"lastName": "Harper",		"email": "per@luctusfelispurus.edu",		"extension": "2644",		"room": "3547",		"mobilePhone": "249-1523-1119",		"homePHone": "6862-5774"	},	{		"firstName": "Quynn",		"lastName": "Dean",		"email": "montes@temporbibendum.ca",		"extension": "3819",		"room": "3820",		"mobilePhone": "758-9989-5925",		"homePHone": "9256-9175"	},	{		"firstName": "Phillip",		"lastName": "Klein",		"email": "Quisque.fringilla.euismod@nonegestasa.co.uk",		"extension": "4179",		"room": "2652",		"mobilePhone": "565-2231-1115",		"homePHone": "1219-4554"	},	{		"firstName": "Lenore",		"lastName": "Ewing",		"email": "consectetuer.rhoncus.Nullam@Cumsociisnatoque.co.uk",		"extension": "5640",		"room": "3356",		"mobilePhone": "784-2584-7158",		"homePHone": "2532-7421"	},	{		"firstName": "Summer",		"lastName": "Oliver",		"email": "sodales.nisi@interdumCurabiturdictum.net",		"extension": "7671",		"room": "3593",		"mobilePhone": "736-4296-6894",		"homePHone": "9421-9536"	}];;$(function () {        var i, z,         rawTmpls = [            "person-single"        ];        if ( $('body').data('env') === 'dev' ) {                // Dev env, load all scripts        z = rawTmpls.length;                var appendTmpl = function (tmpl) {            $.ajax({                url: 'src/templates/'+tmpl+'.tpl',                async: false,                success: function (data) {                    $('#templates').append("<script type=\"text/template\" id=\""+tmpl+"\">"+data+"</script>");                 }            });        };                for (i=0; i<z; i++) {            appendTmpl(rawTmpls[i]);        }                    } else {                // Production, load compiled        $.ajax({            url: 'dist/templates/system.tpl',            async: false,            success: function (data) {                $('#templates').append(data);             }        });            }    });;spdy.module('Person', function(Mod, App, Backbone, Marionette, $, _) {	Mod.Controller = {		getAllPeople: function() {			var peopleList = new Mod.Views.List.CollectionView({				collection: peopleData			});			App.main.show(peopleList);		}	};		App.on("person:showall", function() {		API.getAllPeople();	});		API = {		getAllPeople: function() {			Mod.Controller.getAllPeople();		}	};});;spdy.module('Person.Model', function(Mod, App, Backbone, Marionette, $, _) {	Mod.Person = Backbone.Model.extend({			});		Mod.Collection = Backbone.Collection.extend({		model: Mod.Person	});});;spdy.module('Person.Views.List', function(Mod, App, Backbone, Marionette, $, _) {
+
+	Mod.SingleView = Marionette.ItemView.extend({
+		template: "#person-single",
+		tagName: 'li'
+	});
+	
+	Mod.CollectionView = Marionette.CollectionView.extend({
+		itemView: Mod.SingleView,
+		tagName: 'ul'
+	});
+});

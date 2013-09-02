@@ -3,7 +3,8 @@ _.templateSettings = { interpolate : /\{\{([\s\S]+?)\}\}/g };
 var spdy = new Marionette.Application();
 
 spdy.addRegions({
-	main: '#mainRegion'
+	main: "#regionMain",
+	tools: "#regionTools"
 });
 
 spdy.navigate = function(route, options) {

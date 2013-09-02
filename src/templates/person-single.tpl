@@ -1,0 +1,1 @@
+ <strong>{{ lastName }}, {{ firstName }}</strong><br/> <small>{{ email }}</small>
